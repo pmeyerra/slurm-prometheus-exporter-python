@@ -1,0 +1,84 @@
+[project]
+name = "slurm-prometheus-exporter"
+version = "1.0.0"
+description = "Add your description here"
+readme = "README.md"
+requires-python = ">=3.11"
+dependencies = [
+    "httpx>=0.28.1",
+    "prometheus-client>=0.23.1",
+    "pydantic>=2.12.2",
+    "starlette>=0.45.0",
+    "structlog>=25.4.0",
+]
+
+[dependency-groups]
+dev = [
+    "pytest>=9.0.2",
+    "ty>=0.0.10",
+]
+
+[build-system]
+requires = ["setuptools>=80.9.0", "wheel"]
+
+
+[tool.setuptools]
+package-dir = {"" = "src"}
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+# --- Ruff configuration for linting
+[tool.ruff]
+# Enable autofix for all enabled rules.
+fix = true
+
+# Enumerate all fixed violations.
+show-fixes = true
+
+line-length = 88
+target-version = "py311"
+
+# Exluce some files and directories from linting.
+exclude = []
+
+[tool.ruff.lint]
+
+# Enable all rules, except those explicitly ignored.
+select = ["ALL"]
+
+ignore = [
+    "ANN", # Type annotations rules, ty will take care of this
+]
+
+fixable = ["ALL"]
+
+# Allow unused variables when underscore-prefixed.
+dummy-variable-rgx = "^(_+|(_+[a-zA-Z0-9_]*[a-zA-Z0-9]+?))$"
+
+[tool.ruff.lint.per-file-ignores]
+"tests/**/*.py" = [
+    "S101",    # Use of assert
+    "PLR2004", # Magic values in assertions
+    "INP001",  # Implicit namespace package (tests)
+]
+
+[tool.ruff.lint.pydocstyle]
+convention = "google"
+
+[tool.ruff.lint.pylint]
+max-args = 6
+
+# --- Pytest configuration
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["src"]
+
+# --- Ty configuration for type checking
+[tool.ty]
+
+[tool.ty.environment]
+python-version = "3.14"
+
+[tool.ty.rules]
+unused-ignore-comment = "warn"
