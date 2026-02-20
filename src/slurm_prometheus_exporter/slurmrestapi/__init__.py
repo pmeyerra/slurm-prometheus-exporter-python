@@ -12,11 +12,17 @@ Exports:
 """
 
 from . import types
-from .client import DEFAULT_API_VERSION, DEFAULT_TIMEOUT, SlurmRestApiClient
+from .client import (
+    DEFAULT_API_VERSION,
+    DEFAULT_TIMEOUT,
+    ExpiredTokenError,
+    SlurmRestApiClient,
+)
 
 __all__ = [
     "DEFAULT_API_VERSION",
     "DEFAULT_TIMEOUT",
+    "ExpiredTokenError",
     "SlurmRestApiClient",
     "types",
 ]

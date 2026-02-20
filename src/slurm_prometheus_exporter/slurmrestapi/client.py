@@ -4,6 +4,8 @@ Provides HTTP client with token-based authentication, thread safety,
 and automatic response validation using Pydantic models.
 """
 
+import base64
+import json
 import threading
 import time
 from pathlib import Path
@@ -20,6 +22,55 @@ logger = structlog.get_logger(__name__)
 DEFAULT_API_VERSION = "v0.0.38"
 
 DEFAULT_TIMEOUT = 30.0
+
+
+class ExpiredTokenError(Exception):
+    """Raised when the Slurm JWT has expired."""
+
+
+def validate_jwt_not_expired(token: str) -> None:
+    """Check that a JWT token has not expired.
+
+    Decodes the JWT payload without verifying the signature and checks
+    the ``exp`` claim against the current time. Raises
+    :class:`ExpiredTokenError` if the token is already past its
+    expiration. If the token is not a valid JWT or has no ``exp`` claim,
+    a warning is logged and execution continues.
+
+    Args:
+        token: The raw JWT string (header.payload.signature).
+
+    Raises:
+        ExpiredTokenError: If the token's ``exp`` claim is in the past.
+    """
+    parts = token.split(".")
+    if len(parts) != 3:  # noqa: PLR2004
+        logger.warning("Token does not appear to be a JWT, skipping expiry check")
+        return
+
+    try:
+        # JWT base64url encoding omits padding; restore it
+        payload_b64 = parts[1]
+        padding = 4 - len(payload_b64) % 4
+        if padding != 4:  # noqa: PLR2004
+            payload_b64 += "=" * padding
+
+        payload = json.loads(base64.urlsafe_b64decode(payload_b64))
+    except (ValueError, json.JSONDecodeError):
+        logger.warning("Failed to decode JWT payload, skipping expiry check")
+        return
+
+    exp = payload.get("exp")
+    if exp is None:
+        logger.warning("JWT has no 'exp' claim, skipping expiry check")
+        return
+
+    now = time.time()
+    if now >= exp:
+        msg = f"Slurm JWT has expired (exp={exp}, now={int(now)})"
+        raise ExpiredTokenError(msg)
+
+    logger.info("JWT expiry validated", expires_in_seconds=int(exp - now))
 
 
 class SlurmRestApiClient:
@@ -76,6 +127,7 @@ class SlurmRestApiClient:
                 msg = f"Token file not found: {token_file}"
                 raise FileNotFoundError(msg)
             token = token_path.read_text().strip()
+            validate_jwt_not_expired(token)
             self._headers["X-SLURM-USER-TOKEN"] = token
 
         # Use thread-local storage for httpx.Client (thread safety)
