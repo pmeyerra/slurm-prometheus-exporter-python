@@ -12,6 +12,15 @@
 - The `README.md` file has a Repo Structure section that explains the architecture of 
   the exporter adn the components in more detail.
 
+## Project Guidelines
+
+- The project follows the conventional commits specification. Format the commit 
+  messages accordingly.
+
+## Slurm Rest API
+
+Slurm REST API documentation is available at https://slurm.schedmd.com/rest_api.html.
+
 ## Running the Code Locally
 
 You can run the exporter locally.
