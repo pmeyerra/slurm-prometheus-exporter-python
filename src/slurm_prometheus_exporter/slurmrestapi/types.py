@@ -70,3 +70,6 @@ class RawJobData(BaseModel):
 
     # Job state
     job_state: str = ""
+
+    # Restart count
+    restart_cnt: int = 0

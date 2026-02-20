@@ -7,6 +7,8 @@
   from the API but does not perform any data processing.
 - Bootstrapping and dependency injection happens in the `main.py` file.
 - This project uses `uv` as a package manager.
+- This project uses `ty` for type checking.
+- This project uses `ruff` for linting and formatting.
 - The exporter is containarized. The `Containerfile` defines how to build the 
   container image.
 - The `README.md` file has a Repo Structure section that explains the architecture of 
@@ -40,14 +42,13 @@ ask the user to create one.
 
 ## Do
 
+- Run tests, linting, and type checking after making changes.
 - Use type annotations throughout the codebase.
-- Use `ty` to for type checking.
-- Use `uv` to manage dependencies.
-- Use `ruff` for linting.
 - Prefer importing whole modules instead of individual classes or functions, e.g. 
   prefer `from starlette import responses` over 
   `from starlette.responses import JSONResponse`.
-- Run the code often, especially after making larger changes.
+- After you have made a change, make sure any documentation (`docs` directory 
+  or `README.md`) is updated accordingly.
 
 ## Don't
 

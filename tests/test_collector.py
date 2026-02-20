@@ -286,11 +286,12 @@ def test_collect_jobs_all_labels_from_raw_data(
     assert labels["partition"] == raw_job.partition
     assert labels["priority"] == str(raw_job.priority)
     assert labels["nodes"] == raw_job.nodes
-    assert labels["user_id"] == str(raw_job.user_id)
+    assert "user_id" not in labels
     assert labels["user_name"] == raw_job.user_name
     assert labels["qos"] == raw_job.qos
     assert labels["cpus"] == str(raw_job.cpus)
     assert labels["memory_mb"] == str(raw_job.memory_per_node)
+    assert labels["state"] == raw_job.job_state
 
 
 def test_collect_jobs_memory_per_node_preferred(
@@ -410,6 +411,134 @@ def test_collect_jobs_sample_value_is_one(
         assert sample.value == 1
 
 
+def test_collect_jobs_count_per_state(
+    mock_client: MagicMock,
+    job_collector: collector.SlurmCollector,
+):
+    """Job state counts are accurate for jobs in different states."""
+    running_jobs = [
+        types.RawJobData(job_id=1, job_state="RUNNING"),
+        types.RawJobData(job_id=2, job_state="RUNNING"),
+        types.RawJobData(job_id=3, job_state="RUNNING"),
+    ]
+    pending_jobs = [
+        types.RawJobData(job_id=4, job_state="PENDING"),
+    ]
+    completed_jobs = [
+        types.RawJobData(job_id=5, job_state="COMPLETED"),
+        types.RawJobData(job_id=6, job_state="COMPLETED"),
+    ]
+    mock_client.get_jobs.return_value = [*running_jobs, *pending_jobs, *completed_jobs]
+    metrics = {m.name: m for m in job_collector.collect()}
+    state_counts = {
+        tuple(s.labels.values()): s.value
+        for s in metrics["slurm_job_count_per_state"].samples
+    }
+    assert state_counts[("RUNNING",)] == len(running_jobs)
+    assert state_counts[("PENDING",)] == len(pending_jobs)
+    assert state_counts[("COMPLETED",)] == len(completed_jobs)
+
+
+def test_collect_jobs_count_per_state_empty(
+    mock_client: MagicMock,
+    job_collector: collector.SlurmCollector,
+):
+    """An empty API response yields a job count per state family with no samples."""
+    mock_client.get_jobs.return_value = []
+    metrics = {m.name: m for m in job_collector.collect()}
+    assert metrics["slurm_job_count_per_state"].samples == []
+
+
+def test_collect_jobs_info_includes_state_label(
+    mock_client: MagicMock,
+    job_collector: collector.SlurmCollector,
+):
+    """The state label is present on slurm_job_info samples."""
+    raw_job = types.RawJobData(job_id=1, job_state="PENDING")
+    mock_client.get_jobs.return_value = [raw_job]
+    metrics = {m.name: m for m in job_collector.collect()}
+    labels = metrics["slurm_job_info"].samples[0].labels
+    assert "state" in labels
+    assert labels["state"] == "PENDING"
+
+
+def test_collect_jobs_restart_count(
+    mock_client: MagicMock,
+    job_collector: collector.SlurmCollector,
+):
+    """Restart count metric reports the correct value per job."""
+    raw_jobs = [
+        types.RawJobData(
+            job_id=1,
+            job_state="RUNNING",
+            restart_cnt=3,
+            user_name="alice",
+        ),
+        types.RawJobData(
+            job_id=2,
+            job_state="PENDING",
+            restart_cnt=0,
+            user_name="bob",
+        ),
+        types.RawJobData(
+            job_id=3,
+            job_state="RUNNING",
+            restart_cnt=7,
+            user_name="alice",
+        ),
+    ]
+    mock_client.get_jobs.return_value = raw_jobs
+    metrics = {m.name: m for m in job_collector.collect()}
+    restart_samples = {
+        s.labels["job_id"]: s for s in metrics["slurm_job_restart_count"].samples
+    }
+    assert restart_samples["1"].value == 3
+    assert restart_samples["1"].labels["user_name"] == "alice"
+    assert restart_samples["2"].value == 0
+    assert restart_samples["2"].labels["user_name"] == "bob"
+    assert restart_samples["3"].value == 7
+    assert restart_samples["3"].labels["user_name"] == "alice"
+
+
+def test_collect_jobs_restart_count_empty(
+    mock_client: MagicMock,
+    job_collector: collector.SlurmCollector,
+):
+    """An empty API response yields a restart count family with no samples."""
+    mock_client.get_jobs.return_value = []
+    metrics = {m.name: m for m in job_collector.collect()}
+    assert metrics["slurm_job_restart_count"].samples == []
+
+
+def test_collect_jobs_restart_count_defaults_to_zero(
+    mock_client: MagicMock,
+    job_collector: collector.SlurmCollector,
+):
+    """Restart count defaults to 0 when not set in raw data."""
+    mock_client.get_jobs.return_value = [
+        types.RawJobData(job_id=1, job_state="RUNNING"),
+    ]
+    metrics = {m.name: m for m in job_collector.collect()}
+    assert metrics["slurm_job_restart_count"].samples[0].value == 0
+
+
+def test_collect_jobs_all_domain_families_present(
+    mock_client: MagicMock,
+    job_collector: collector.SlurmCollector,
+):
+    """The full jobs pipeline produces all expected metric families."""
+    mock_client.get_jobs.return_value = [
+        types.RawJobData(job_id=1, job_state="RUNNING"),
+    ]
+    metrics = {m.name: m for m in job_collector.collect()}
+    expected = {
+        "slurm_job_count_per_state",
+        "slurm_job_restart_count",
+        "slurm_job_info",
+    }
+    assert expected <= set(metrics.keys())
+
+
 # ---------------------------------------------------------------------------
 # Nodes pipeline integration
 # ---------------------------------------------------------------------------
@@ -432,13 +561,13 @@ def test_collect_nodes_all_domain_families_present(
     metrics = {m.name: m for m in node_collector.collect()}
     expected = {
         "slurm_node_count_per_state",
-        "slurm_cpus_total",
-        "slurm_cpus_idle",
-        "slurm_cpus_allocated",
-        "slurm_cpu_load",
-        "slurm_gpus_total",
-        "slurm_gpus_idle",
-        "slurm_gpus_allocated",
+        "slurm_node_cpus_total",
+        "slurm_node_cpus_idle",
+        "slurm_node_cpus_allocated",
+        "slurm_node_cpu_load",
+        "slurm_node_gpus_total",
+        "slurm_node_gpus_idle",
+        "slurm_node_gpus_allocated",
     }
     assert expected <= set(metrics.keys())
 
@@ -468,9 +597,9 @@ def test_collect_nodes_cpu_aggregation(
 
     metrics = {m.name: m for m in node_collector.collect()}
 
-    actual_total = metrics["slurm_cpus_total"].samples[0].value
-    actual_alloc = metrics["slurm_cpus_allocated"].samples[0].value
-    actual_idle = metrics["slurm_cpus_idle"].samples[0].value
+    actual_total = metrics["slurm_node_cpus_total"].samples[0].value
+    actual_alloc = metrics["slurm_node_cpus_allocated"].samples[0].value
+    actual_idle = metrics["slurm_node_cpus_idle"].samples[0].value
 
     assert actual_total == pytest.approx(expected_total)
     assert actual_alloc == pytest.approx(expected_alloc)
@@ -491,7 +620,7 @@ def test_collect_nodes_cpu_load_scaled(
     expected_load = raw_node.cpu_load / 100.0
 
     metrics = {m.name: m for m in node_collector.collect()}
-    actual_load = metrics["slurm_cpu_load"].samples[0].value
+    actual_load = metrics["slurm_node_cpu_load"].samples[0].value
     assert actual_load == pytest.approx(expected_load)
 
 
@@ -515,13 +644,15 @@ def test_collect_nodes_gpu_parsed_and_aggregated(
     expected_v100_alloc = 0.0
 
     total = {
-        tuple(s.labels.values()): s.value for s in metrics["slurm_gpus_total"].samples
+        tuple(s.labels.values()): s.value
+        for s in metrics["slurm_node_gpus_total"].samples
     }
     assert total[("a100",)] == pytest.approx(expected_a100_total)
     assert total[("v100",)] == pytest.approx(expected_v100_total)
 
     idle = {
-        tuple(s.labels.values()): s.value for s in metrics["slurm_gpus_idle"].samples
+        tuple(s.labels.values()): s.value
+        for s in metrics["slurm_node_gpus_idle"].samples
     }
     expected_a100_idle = expected_a100_total - expected_a100_alloc
     expected_v100_idle = expected_v100_total - expected_v100_alloc
@@ -530,7 +661,7 @@ def test_collect_nodes_gpu_parsed_and_aggregated(
 
     alloc = {
         tuple(s.labels.values()): s.value
-        for s in metrics["slurm_gpus_allocated"].samples
+        for s in metrics["slurm_node_gpus_allocated"].samples
     }
     assert alloc[("a100",)] == pytest.approx(expected_a100_alloc)
     assert alloc[("v100",)] == pytest.approx(expected_v100_alloc)
@@ -562,11 +693,12 @@ def test_collect_nodes_gpu_summed_across_nodes(
 
     metrics = {m.name: m for m in node_collector.collect()}
     total = {
-        tuple(s.labels.values()): s.value for s in metrics["slurm_gpus_total"].samples
+        tuple(s.labels.values()): s.value
+        for s in metrics["slurm_node_gpus_total"].samples
     }
     alloc = {
         tuple(s.labels.values()): s.value
-        for s in metrics["slurm_gpus_allocated"].samples
+        for s in metrics["slurm_node_gpus_allocated"].samples
     }
     assert total[("a100",)] == pytest.approx(expected_total)
     assert alloc[("a100",)] == pytest.approx(expected_alloc)
@@ -603,9 +735,9 @@ def test_collect_nodes_no_gpu_node(
         types.RawNodeData(name="cpu-only", state="idle", cpus=64),
     ]
     metrics = {m.name: m for m in node_collector.collect()}
-    assert metrics["slurm_gpus_total"].samples == []
-    assert metrics["slurm_gpus_idle"].samples == []
-    assert metrics["slurm_gpus_allocated"].samples == []
+    assert metrics["slurm_node_gpus_total"].samples == []
+    assert metrics["slurm_node_gpus_idle"].samples == []
+    assert metrics["slurm_node_gpus_allocated"].samples == []
 
 
 def test_collect_nodes_empty_api_response(
@@ -615,5 +747,5 @@ def test_collect_nodes_empty_api_response(
     """An empty API response yields zero-value CPU metrics and no GPU samples."""
     mock_client.get_nodes.return_value = []
     metrics = {m.name: m for m in node_collector.collect()}
-    assert metrics["slurm_cpus_total"].samples[0].value == 0.0
-    assert metrics["slurm_gpus_total"].samples == []
+    assert metrics["slurm_node_cpus_total"].samples[0].value == 0.0
+    assert metrics["slurm_node_gpus_total"].samples == []

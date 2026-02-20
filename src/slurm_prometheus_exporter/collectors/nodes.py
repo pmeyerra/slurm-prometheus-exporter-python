@@ -287,22 +287,22 @@ def generate_metrics(nodes: list[NodeMetric]) -> Iterator[Metric]:
     cpu_metrics = _aggregate_cpu_metrics(nodes)
 
     # Export total CPU metrics
-    total_cpus = GaugeMetricFamily("slurm_cpus_total", "Total cpus")
+    total_cpus = GaugeMetricFamily("slurm_node_cpus_total", "Total cpus")
     total_cpus.add_metric([], cpu_metrics.total)
     yield total_cpus
 
-    total_idle_cpus = GaugeMetricFamily("slurm_cpus_idle", "Total idle cpus")
+    total_idle_cpus = GaugeMetricFamily("slurm_node_cpus_idle", "Total idle cpus")
     total_idle_cpus.add_metric([], cpu_metrics.idle)
     yield total_idle_cpus
 
     total_allocated_cpus = GaugeMetricFamily(
-        "slurm_cpus_allocated",
+        "slurm_node_cpus_allocated",
         "Total allocated cpus",
     )
     total_allocated_cpus.add_metric([], cpu_metrics.allocated)
     yield total_allocated_cpus
 
-    total_cpu_load = GaugeMetricFamily("slurm_cpu_load", "Total cpu load")
+    total_cpu_load = GaugeMetricFamily("slurm_node_cpu_load", "Total cpu load")
     total_cpu_load.add_metric([], cpu_metrics.load)
     yield total_cpu_load
 
@@ -311,7 +311,7 @@ def generate_metrics(nodes: list[NodeMetric]) -> Iterator[Metric]:
 
     # Export total GPU metrics with gpu_type label
     total_gpus = GaugeMetricFamily(
-        "slurm_gpus_total",
+        "slurm_node_gpus_total",
         "Total gpus",
         labels=["gpu_type"],
     )
@@ -321,7 +321,7 @@ def generate_metrics(nodes: list[NodeMetric]) -> Iterator[Metric]:
 
     # Export idle GPU metrics with gpu_type label
     total_idle_gpus = GaugeMetricFamily(
-        "slurm_gpus_idle",
+        "slurm_node_gpus_idle",
         "Total idle gpus",
         labels=["gpu_type"],
     )
@@ -331,7 +331,7 @@ def generate_metrics(nodes: list[NodeMetric]) -> Iterator[Metric]:
 
     # Export allocated GPU metrics with gpu_type label
     total_allocated_gpus = GaugeMetricFamily(
-        "slurm_gpus_allocated",
+        "slurm_node_gpus_allocated",
         "Total allocated gpus",
         labels=["gpu_type"],
     )
