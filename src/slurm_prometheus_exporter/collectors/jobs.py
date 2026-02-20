@@ -31,6 +31,7 @@ class JobMetric:
     memory_per_node: int | None = None
     memory_per_cpu: int | None = None
     job_state: str = ""
+    restart_cnt: int = 0
 
     @property
     def total_memory_mb(self) -> int:
@@ -72,6 +73,7 @@ def _transform_job(raw: slurmrestapi.types.RawJobData) -> JobMetric:
         memory_per_node=raw.memory_per_node,
         memory_per_cpu=raw.memory_per_cpu,
         job_state=raw.job_state,
+        restart_cnt=raw.restart_cnt,
     )
 
 
@@ -88,6 +90,23 @@ def fetch(client: slurmrestapi.SlurmRestApiClient) -> list[JobMetric]:
     return [_transform_job(job) for job in raw_jobs]
 
 
+def _count_jobs_by_state(jobs: list[JobMetric]) -> dict[str, int]:
+    """Count jobs grouped by state.
+
+    Args:
+        jobs: List of job metrics.
+
+    Returns:
+        Dictionary mapping state name to job count.
+    """
+    count_per_state: dict[str, int] = {}
+
+    for job in jobs:
+        count_per_state[job.job_state] = count_per_state.get(job.job_state, 0) + 1
+
+    return count_per_state
+
+
 def generate_metrics(jobs: list[JobMetric]) -> Iterator[Metric]:
     """Generate Prometheus metrics from job data.
 
@@ -100,6 +119,27 @@ def generate_metrics(jobs: list[JobMetric]) -> Iterator[Metric]:
     Yields:
         Prometheus Metric objects.
     """
+    # Export job count per state metric
+    state_counts = _count_jobs_by_state(jobs)
+    job_count_per_state = GaugeMetricFamily(
+        "slurm_job_count_per_state",
+        "Number of jobs in each state",
+        labels=["state"],
+    )
+    for state, count in state_counts.items():
+        job_count_per_state.add_metric([state], count)
+    yield job_count_per_state
+
+    # Export job restart count metric
+    job_restart_count = GaugeMetricFamily(
+        "slurm_job_restart_count",
+        "Number of restarts for each job",
+        labels=["job_id", "user_name"],
+    )
+    for job in jobs:
+        job_restart_count.add_metric([str(job.job_id), job.user_name], job.restart_cnt)
+    yield job_restart_count
+
     # Export job info metric
     job_info = GaugeMetricFamily(
         "slurm_job_info",
@@ -109,11 +149,11 @@ def generate_metrics(jobs: list[JobMetric]) -> Iterator[Metric]:
             "partition",
             "priority",
             "nodes",
-            "user_id",
             "user_name",
             "qos",
             "cpus",
             "memory_mb",
+            "state",
         ],
     )
 
@@ -124,11 +164,11 @@ def generate_metrics(jobs: list[JobMetric]) -> Iterator[Metric]:
                 job.partition,
                 str(job.priority),
                 job.nodes,
-                str(job.user_id),
                 job.user_name,
                 job.qos,
                 str(job.cpus or 0),
                 str(job.total_memory_mb),
+                job.job_state,
             ],
             1,
         )
