@@ -15,7 +15,6 @@ dependencies = [
 [dependency-groups]
 dev = [
     "pytest>=9.0.2",
-    "ty>=0.0.10",
 ]
 
 [build-system]
@@ -48,7 +47,9 @@ exclude = []
 select = ["ALL"]
 
 ignore = [
-    "ANN", # Type annotations rules, ty will take care of this
+    "ANN",      # Type annotations rules, ty will take care of this
+    "COM812",   # Trailing comma, conflicts with ruff formatter
+    "TID252",   # We want to keep relativ imports
 ]
 
 fixable = ["ALL"]
@@ -61,6 +62,7 @@ dummy-variable-rgx = "^(_+|(_+[a-zA-Z0-9_]*[a-zA-Z0-9]+?))$"
     "S101",    # Use of assert
     "PLR2004", # Magic values in assertions
     "INP001",  # Implicit namespace package (tests)
+    "SLF001",  # Private member access (testing internal behavior)
 ]
 
 [tool.ruff.lint.pydocstyle]
@@ -78,7 +80,7 @@ pythonpath = ["src"]
 [tool.ty]
 
 [tool.ty.environment]
-python-version = "3.14"
+python-version = "3.11"
 
 [tool.ty.rules]
 unused-ignore-comment = "warn"
